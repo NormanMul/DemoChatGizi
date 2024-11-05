@@ -85,7 +85,7 @@ nutrition_status = check_nutrition_status(bmi, age)
 st.write(f"Nutrition Status: {nutrition_status}")
 
 # Map with IPAL data
-st.subheader("IPAL Coverage Map")
+st.subheader("Coverage Map")
 layer = pdk.Layer(
     "ScatterplotLayer",
     ipal_data,
