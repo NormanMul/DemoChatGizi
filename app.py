@@ -8,7 +8,7 @@ from groq import Groq
 st.set_page_config(page_title="DoaIbu Nutrition Assistant", layout="centered")
 
 # Load and display the logo in the sidebar
-logo = "logo.png"
+logo = "logo.jpg"
 st.sidebar.image(logo, use_column_width=True)
 
 st.sidebar.title("Configuration")
