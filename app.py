@@ -2,27 +2,28 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import pydeck as pdk
-import io
+from groq import Groq
 
 # Set Streamlit page configuration
-st.set_page_config(page_title="Greenmovement", layout="centered")
+st.set_page_config(page_title="DoaIbu Nutrition Assistant", layout="centered")
 
 # Load and display the logo in the sidebar
-logo = "logo.jpg"
+logo = "logo.png"
 st.sidebar.image(logo, use_column_width=True)
 
 st.sidebar.title("Configuration")
-input_password = st.sidebar.text_input("Enter Password", type="password")
+input_password = st.sidebar.text_input("Enter Password (password is team's name without capital)", type="password")
 
 # Initialize session state for responses if it doesn't exist
 if 'responses' not in st.session_state:
     st.session_state['responses'] = []
 
-correct_password = "greenmovement"
+correct_password = "doaibu"
 if input_password != correct_password:
     st.sidebar.error("Incorrect password. Access denied.")
     st.stop()
 
+# API and model selection
 model_options = {
     "Llama 70B Versatile": "llama-3.1-70b-versatile",
     "Llama 8B Instant": "llama-3.1-8b-instant",
@@ -31,54 +32,65 @@ model_options = {
 selected_model = st.sidebar.selectbox("Select Model", list(model_options.keys()))
 api_key = st.secrets["groq"]["api_key"]
 
-@st.cache(allow_output_mutation=True)
-def load_data(file_path):
-    return pd.read_csv(file_path)
-
-data = load_data('datasampah1.csv')
-ipal_data = load_data('IPAL.csv')
+# Load IPAL data for geographic representation
+ipal_data = pd.read_csv('IPAL.csv')
 
 def assign_lat_lon(data):
     if 'latitude' not in data.columns or 'longitude' not in data.columns:
         num_rows = len(data)
-        default_lat = 18.0  # Latitude for Mekong River in Laos
-        default_lon = 105.0  # Longitude for Mekong River in Laos
+        default_lat = 18.0
+        default_lon = 105.0
         data['latitude'] = [default_lat] * num_rows
         data['longitude'] = [default_lon] * num_rows
 
 assign_lat_lon(ipal_data)
 
-# Function to generate plots based on user input
-def generate_plot(data, plot_type, x_column, y_column):
-    plt.figure()
-    if plot_type == 'Line':
-        plt.plot(data[x_column], data[y_column], marker='o')
-    elif plot_type == 'Bar':
-        plt.bar(data[x_column], data[y_column])
-    elif plot_type == 'Scatter':
-        plt.scatter(data[x_column], data[y_column])
-    plt.title(f'{plot_type} Plot of {y_column} vs {x_column}')
-    plt.xlabel(x_column)
-    plt.ylabel(y_column)
-    st.pyplot(plt)
-    plt.clf()  # Clear the plot figure to free up memory
+# Nutrition Parameter Inputs
+st.title("Nutrition Diagnostic Tool")
+st.subheader("Enter Health Parameters")
 
-# Plot configuration
-plot_type = st.selectbox("Choose the type of plot:", ["Line", "Bar", "Scatter"])
-columns = data.columns.tolist()
-x_column = st.selectbox("Select X-axis data:", columns)
-y_column = st.selectbox("Select Y-axis data:", columns)
+age = st.number_input("Age (years)", min_value=0, max_value=100, value=5)
+height = st.number_input("Height (cm)", min_value=30, max_value=250, value=100)
+weight = st.number_input("Weight (kg)", min_value=1, max_value=200, value=15)
+gender = st.selectbox("Gender", ["Male", "Female"])
 
-if st.button("Generate Plot"):
-    generate_plot(data, plot_type, x_column, y_column)
+# Calculate basic nutritional indicators (BMI, etc.)
+bmi = weight / ((height / 100) ** 2)
+st.write(f"Calculated BMI: {bmi:.2f}")
 
-# Display the map with IPAL data
+def check_nutrition_status(bmi, age):
+    if age < 5:
+        if bmi < 15:
+            return "Underweight (Potential Malnutrition)"
+        elif 15 <= bmi < 18:
+            return "Normal"
+        else:
+            return "Overweight"
+    elif age < 18:
+        if bmi < 16:
+            return "Underweight (Risk of Stunting)"
+        elif 16 <= bmi < 24:
+            return "Normal"
+        else:
+            return "Overweight"
+    else:
+        if bmi < 18.5:
+            return "Underweight"
+        elif 18.5 <= bmi < 24.9:
+            return "Normal"
+        else:
+            return "Overweight"
+
+nutrition_status = check_nutrition_status(bmi, age)
+st.write(f"Nutrition Status: {nutrition_status}")
+
+# Map with IPAL data
 st.subheader("IPAL Coverage Map")
 layer = pdk.Layer(
     "ScatterplotLayer",
     ipal_data,
     get_position='[longitude, latitude]',
-    get_color='[255, 0, 0, 160]',  # RGB color code for red
+    get_color='[255, 0, 0, 160]',
     get_radius=20000,
 )
 view_state = pdk.ViewState(
@@ -89,14 +101,14 @@ view_state = pdk.ViewState(
 )
 st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
 
+# Question-answer model for nutrition FAQ
 def generate_response(prompt, temperature=0.7):
-    from groq import Groq
     client = Groq(api_key=api_key)
     try:
         response = client.chat.completions.create(
             model=model_options[selected_model],
             messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "system", "content": "You are a helpful nutrition assistant."},
                 {"role": "user", "content": prompt},
             ],
             temperature=temperature
@@ -106,7 +118,7 @@ def generate_response(prompt, temperature=0.7):
         st.error(f"An error occurred: {e}")
         return "I'm sorry, I couldn't generate a response."
 
-question = st.text_input("Ask a question or make a request:")
+question = st.text_input("Ask a question about nutrition:")
 if question:
     answer = generate_response(question)
     st.session_state.responses.append({"question": question, "answer": answer})
